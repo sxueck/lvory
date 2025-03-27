@@ -78,7 +78,7 @@ const setupApp = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.on('ready', () => {
-  process.title = 'LVORY';
+  process.title = 'lvory';
 
   // 创建主窗口
   windowManager.createWindow();

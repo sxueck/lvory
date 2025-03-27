@@ -9,7 +9,6 @@ export const AppProvider = ({ children }) => {
     privateMode: false,
     theme: 'light',
     showAnimations: true,
-    // ... 其他状态
   });
 
   // 加载持久化的设置
@@ -18,7 +17,7 @@ export const AppProvider = ({ children }) => {
       if (window.electron && window.electron.getSettings) {
         try {
           const result = await window.electron.getSettings();
-          if (result.success) {
+          if (result && result.success && result.settings) {
             setState(prev => ({
               ...prev,
               ...result.settings,

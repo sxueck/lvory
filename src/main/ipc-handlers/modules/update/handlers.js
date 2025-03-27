@@ -1,32 +1,82 @@
 /**
  * 更新相关IPC处理程序
  */
-const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const logger = require('../../utils/logger');
-const utils = require('./utils');
+const logger = require('../../../utils/logger');
+const { getAppDataDir } = require('../../../../utils/paths');
+const { createResponse, getMainWindow } = require('../../../utils');
 
-/**
- * 设置更新相关IPC处理程序
- */
-function setup() {
+// 获取配置文件目录
+function getConfigDir() {
+  // 使用getAppDataDir而不是app.getPath('userData')，保持一致性
+  const appDataDir = getAppDataDir();
+  const configDir = path.join(appDataDir, 'configs');
+  
+  // 确保目录存在
+  if (!fs.existsSync(configDir)) {
+    try {
+      fs.mkdirSync(configDir, { recursive: true });
+    } catch (error) {
+      logger.error(`创建配置目录失败: ${error.message}`);
+    }
+  }
+  
+  return configDir;
+}
+
+// 读取元数据缓存
+function readMetaCache() {
+  try {
+    const configDir = getConfigDir();
+    const metaCachePath = path.join(configDir, 'meta.cache');
+    
+    if (!fs.existsSync(metaCachePath)) {
+      return {};
+    }
+    
+    const data = fs.readFileSync(metaCachePath, 'utf-8');
+    return JSON.parse(data);
+  } catch (error) {
+    logger.error('读取元数据缓存失败:', error);
+    return {};
+  }
+}
+
+// 写入元数据缓存
+function writeMetaCache(data) {
+  try {
+    const configDir = getConfigDir();
+    const metaCachePath = path.join(configDir, 'meta.cache');
+    
+    fs.writeFileSync(metaCachePath, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch (error) {
+    logger.error('写入元数据缓存失败:', error);
+    return false;
+  }
+}
+
+// 处理程序对象
+const handlers = {
   // 更新配置文件并更新状态
-  ipcMain.handle('updateProfile', async (event, fileName) => {
+  'updateProfile': async (event, fileName) => {
     try {
       if (!fileName) {
-        return { success: false, error: '文件名不能为空' };
+        return createResponse(false, null, { message: '文件名不能为空' });
       }
       
+      const configDir = getConfigDir();
+      
       // 获取元数据
-      let metaCache = utils.readMetaCache();
+      let metaCache = readMetaCache();
       let metadata = metaCache[fileName];
       
       // 如果没有元数据，则无法更新
       if (!metadata || !metadata.url) {
-        return { success: false, error: '找不到该文件的更新来源' };
+        return createResponse(false, null, { message: '找不到该文件的更新来源' });
       }
       
       // 开始更新
@@ -50,7 +100,7 @@ function setup() {
             
             // 更新元数据
             metaCache[fileName] = metadata;
-            utils.writeMetaCache(metaCache);
+            writeMetaCache(metaCache);
             
             let errorMessage = `HTTP Error: ${response.statusCode}`;
             if (response.statusCode === 404) {
@@ -78,7 +128,7 @@ function setup() {
             
             // 更新元数据
             metaCache[fileName] = metadata;
-            utils.writeMetaCache(metaCache);
+            writeMetaCache(metaCache);
             
             reject(new Error('Server returned HTML instead of a file. This URL may be a web page, not a downloadable file.'));
             return;
@@ -104,7 +154,7 @@ function setup() {
             
             // 更新元数据
             metaCache[fileName] = metadata;
-            utils.writeMetaCache(metaCache);
+            writeMetaCache(metaCache);
             
             reject(new Error(`Failed to write file: ${err.message}`));
           });
@@ -121,10 +171,10 @@ function setup() {
             
             // 更新元数据
             metaCache[fileName] = metadata;
-            utils.writeMetaCache(metaCache);
+            writeMetaCache(metaCache);
             
             // 通知前端
-            const mainWindow = utils.getMainWindow();
+            const mainWindow = getMainWindow();
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('profile-updated', {
                 success: true,
@@ -132,10 +182,9 @@ function setup() {
               });
             }
             
-            resolve({
-              success: true,
+            resolve(createResponse(true, {
               message: `配置文件已更新: ${fileName}`
-            });
+            }));
           });
         });
         
@@ -151,7 +200,7 @@ function setup() {
           
           // 更新元数据
           metaCache[fileName] = metadata;
-          utils.writeMetaCache(metaCache);
+          writeMetaCache(metaCache);
           
           let errorMessage = err.message;
           if (err.code === 'ENOTFOUND') {
@@ -179,32 +228,28 @@ function setup() {
           
           // 更新元数据
           metaCache[fileName] = metadata;
-          utils.writeMetaCache(metaCache);
+          writeMetaCache(metaCache);
           
           reject(new Error('Download request timed out. The server is taking too long to respond.'));
         });
       });
     } catch (error) {
       logger.error(`更新配置文件失败: ${error.message}`);
-      return {
-        success: false,
-        error: error.message
-      };
+      return createResponse(false, null, error);
     }
-  });
+  },
   
   // 更新所有配置文件
-  ipcMain.handle('updateAllProfiles', async () => {
+  'updateAllProfiles': async () => {
     try {
-      const configDir = utils.getConfigDir();
-      const metaCache = utils.readMetaCache();
+      const configDir = getConfigDir();
+      const metaCache = readMetaCache();
       
       // 如果meta.cache为空，无法更新
       if (Object.keys(metaCache).length === 0) {
-        return {
-          success: false,
-          error: '没有可更新的配置文件信息'
-        };
+        return createResponse(false, null, {
+          message: '没有可更新的配置文件信息'
+        });
       }
       
       // 筛选可更新的文件
@@ -214,23 +259,22 @@ function setup() {
       });
       
       if (files.length === 0) {
-        return {
-          success: true,
+        return createResponse(true, {
           message: '没有找到可更新的配置文件',
           updatedFiles: []
-        };
+        });
       }
       
       logger.info(`开始批量更新${files.length}个配置文件`);
       
-      const mainWindow = utils.getMainWindow();
       const results = [];
       
       // 依次更新每个文件
       for (const fileName of files) {
         try {
           // 使用updateProfile处理程序更新
-          const result = await ipcMain.handle('updateProfile', {}, fileName);
+          const result = await handlers.updateProfile({}, fileName);
+          
           if (result.success) {
             results.push({
               fileName,
@@ -250,40 +294,24 @@ function setup() {
             success: false,
             error: error.message
           });
-          
-          // 通知前端
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('profile-updated', {
-              success: false,
-              fileName: fileName,
-              error: error.message
-            });
-          }
         }
       }
       
-      // 更新完毕后，通知前端重新加载文件列表
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('profiles-changed');
-      }
-      
-      const successCount = results.filter(r => r.success).length;
-      
-      return {
-        success: true,
-        message: `批量更新完成，成功: ${successCount}/${files.length}`,
-        results: results
-      };
+      return createResponse(true, {
+        message: `批量更新完成, 共${results.length}个文件, ${results.filter(r => r.success).length}个成功`,
+        results
+      });
     } catch (error) {
       logger.error(`批量更新配置文件失败: ${error.message}`);
-      return {
-        success: false,
-        error: error.message
-      };
+      return createResponse(false, null, error);
     }
-  });
-}
+  }
+};
 
+// 导出模块
 module.exports = {
-  setup
+  handlers,
+  readMetaCache,
+  writeMetaCache,
+  getConfigDir
 }; 

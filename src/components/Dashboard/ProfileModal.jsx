@@ -82,7 +82,7 @@ const ProfileModal = ({ isOpen, onClose, onDownloadSuccess }) => {
             
             // 下载成功后回调
             if (onDownloadSuccess) {
-              onDownloadSuccess(url, customFileName, updateInterval);
+              onDownloadSuccess(result);
             }
             
             // 3秒后关闭弹窗

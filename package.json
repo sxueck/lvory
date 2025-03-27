@@ -55,7 +55,10 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.4.0",
-    "system-proxy": "^2.0.0"
+    "system-proxy": "^2.0.0",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.2",
+    "zoe": "^0.0.4"
   },
   "build": {
     "appId": "com.lvory.app",

@@ -27,18 +27,24 @@ const Activity = () => {
     const fetchLogs = async () => {
       try {
         const history = await window.electron.logs.getLogHistory();
-        setLogs(history || []);
+        // 确保history是数组
+        setLogs(Array.isArray(history) ? history : []);
         scrollToBottom();
       } catch (error) {
         console.error('获取日志历史失败:', error);
+        setLogs([]);
       }
     };
 
     fetchLogs();
 
     // 订阅日志更新
-    const unsubscribe = window.electron.logs.onLogMessage((log) => {
-      setLogs((prevLogs) => [...prevLogs, log]);
+    const unsubscribe = window.electron.logs.onActivityLog((log) => {
+      setLogs((prevLogs) => {
+        // 确保prevLogs是数组
+        const logsArray = Array.isArray(prevLogs) ? prevLogs : [];
+        return [...logsArray, log];
+      });
       if (autoScroll) {
         scrollToBottom();
       }
@@ -70,7 +76,8 @@ const Activity = () => {
     }
   };
 
-  const filteredLogs = logs.filter((log) => {
+  // 确保logs是数组并应用过滤
+  const filteredLogs = Array.isArray(logs) ? logs.filter((log) => {
     if (!log) return false;
     
     // 应用类型过滤
@@ -86,7 +93,7 @@ const Activity = () => {
     }
 
     return true;
-  });
+  }) : [];
 
   // 格式化时间戳
   const formatTimestamp = (timestamp) => {

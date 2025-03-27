@@ -1,0 +1,21 @@
+/**
+ * 状态检查模块入口
+ */
+const logger = require('../../../../utils/logger');
+const { registerHandlers } = require('../../core/registry');
+const { handlers } = require('./handlers');
+
+/**
+ * 设置状态检查相关IPC处理程序
+ */
+function setup() {
+  // 注册普通处理程序
+  registerHandlers('StatusModule', handlers);
+  
+  logger.info('状态检查相关IPC处理程序注册完成');
+}
+
+// 导出模块
+module.exports = {
+  setup
+}; 

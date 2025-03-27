@@ -10,42 +10,12 @@ const { spawn } = require('child_process');
 const systemProxy = require('./system-proxy');
 const logger = require('./logger');
 const os = require('os');
+const { getAppDataDir } = require('./paths');
 
 /**
- * 获取应用数据目录
- * @returns {String} 应用数据目录路径
+ * 获取应用数据目录 - 不再使用这个函数，改用paths模块中的统一实现
+ * @deprecated 请使用paths模块中的getAppDataDir函数
  */
-function getAppDataDir() {
-  let appDir;
-  
-  // 根据不同平台获取合适的数据目录
-  if (process.platform === 'win32') {
-    // Windows平台 - 使用LOCALAPPDATA目录
-    const appDataDir = process.env.LOCALAPPDATA || '';
-    appDir = path.join(appDataDir, 'lvory');
-  } else if (process.platform === 'darwin') {
-    // macOS平台 - 使用Library/Application Support目录
-    const homeDir = os.homedir();
-    appDir = path.join(homeDir, 'Library', 'Application Support', 'lvory');
-  } else {
-    // Linux平台 - 使用~/.config目录
-    const homeDir = os.homedir();
-    appDir = path.join(homeDir, '.config', 'lvory');
-  }
-  
-  // 确保目录存在
-  if (!fs.existsSync(appDir)) {
-    try {
-      fs.mkdirSync(appDir, { recursive: true });
-      logger.info(`创建应用数据目录: ${appDir}`);
-    } catch (error) {
-      logger.error(`[SingBox] 创建应用数据目录失败: ${error.message}`);
-    }
-  }
-  
-  return appDir;
-}
-
 class SingBox {
   constructor() {
     this.binPath = '';

@@ -11,6 +11,7 @@ const { pipeline } = require('stream');
 const { promisify } = require('util');
 const streamPipeline = promisify(pipeline);
 const logger = require('../utils/logger');
+const { getAppDataDir } = require('../utils/paths');
 
 // 尝试导入AdmZip，用于解压文件
 let AdmZip;
@@ -18,41 +19,6 @@ try {
   AdmZip = require('adm-zip');
 } catch (error) {
   logger.warn('AdmZip库未安装，解压功能将不可用');
-}
-
-/**
- * 获取应用数据目录
- * @returns {String} 应用数据目录路径
- */
-function getAppDataDir() {
-  let appDir;
-  
-  // 根据不同平台获取合适的数据目录
-  if (process.platform === 'win32') {
-    // Windows平台 - 使用LOCALAPPDATA目录
-    const appDataDir = process.env.LOCALAPPDATA || '';
-    appDir = path.join(appDataDir, 'lvory');
-  } else if (process.platform === 'darwin') {
-    // macOS平台 - 使用Library/Application Support目录
-    const homeDir = os.homedir();
-    appDir = path.join(homeDir, 'Library', 'Application Support', 'lvory');
-  } else {
-    // Linux平台 - 使用~/.config目录
-    const homeDir = os.homedir();
-    appDir = path.join(homeDir, '.config', 'lvory');
-  }
-  
-  // 确保目录存在
-  if (!fs.existsSync(appDir)) {
-    try {
-      fs.mkdirSync(appDir, { recursive: true });
-      logger.info(`创建应用数据目录: ${appDir}`);
-    } catch (error) {
-      logger.error(`创建应用数据目录失败: ${error.message}`);
-    }
-  }
-  
-  return appDir;
 }
 
 /**
@@ -81,7 +47,7 @@ const downloadCore = async (mainWindow) => {
                  process.arch === 'arm64' ? 'arm64' : 'amd64';
     
     // 根据平台获取下载URL
-    const version = '1.7.5'; // 固定版本号，您可以进行配置化
+    const version = '1.11.5';
     let downloadUrl;
     let binaryName;
     let archiveName;

@@ -1,65 +1,95 @@
 /**
  * 下载相关IPC处理程序
  */
-const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const logger = require('../../utils/logger');
-const utils = require('./utils');
+const logger = require('../../../../utils/logger');
+const { getAppDataDir } = require('../../../../utils/paths');
+const { getMainWindow, createResponse } = require('../../core/utils');
 
-/**
- * 设置下载相关IPC处理程序
- */
-function setup() {
-  // 处理下载配置文件请求
-  ipcMain.handle('download-profile', async (event, data) => {
+// 获取配置文件目录
+function getConfigDir() {
+  // 使用getAppDataDir而不是app.getPath('userData')，保持一致性
+  const appDataDir = getAppDataDir();
+  const configDir = path.join(appDataDir, 'configs');
+  
+  // 确保目录存在
+  if (!fs.existsSync(configDir)) {
+    try {
+      fs.mkdirSync(configDir, { recursive: true });
+    } catch (error) {
+      logger.error(`创建配置目录失败: ${error.message}`);
+    }
+  }
+  
+  return configDir;
+}
+
+// 读取元数据缓存
+function readMetaCache() {
+  const metaCachePath = path.join(getConfigDir(), 'meta.cache');
+  
+  if (fs.existsSync(metaCachePath)) {
+    try {
+      const data = fs.readFileSync(metaCachePath, 'utf8');
+      return JSON.parse(data);
+    } catch (error) {
+      logger.error('读取meta.cache文件失败:', error);
+      return {};
+    }
+  }
+  
+  return {};
+}
+
+// 写入元数据缓存
+function writeMetaCache(cache) {
+  const metaCachePath = path.join(getConfigDir(), 'meta.cache');
+  
+  try {
+    fs.writeFileSync(metaCachePath, JSON.stringify(cache, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    logger.error('写入meta.cache文件失败:', error);
+    return false;
+  }
+}
+
+// 处理程序对象
+const handlers = {
+  // 下载配置文件
+  'download-profile': async (event, data) => {
     try {
       if (!data || typeof data !== 'object') {
-        return {
-          success: false,
-          message: 'Invalid request format',
-          error: 'Expected object with url property'
-        };
+        return createResponse(false, null, 'Invalid request format');
       }
 
       const fileUrl = data.url;
       let customFileName = data.fileName;
       const isDefaultConfig = data.isDefaultConfig === true;
       
-      logger.info('Starting download:', fileUrl);
-      logger.info('Custom filename:', customFileName);
-      logger.info('Set as default config:', isDefaultConfig);
+      logger.info('开始下载:', fileUrl);
+      logger.info('自定义文件名:', customFileName);
+      logger.info('设置为默认配置:', isDefaultConfig);
       
       if (!fileUrl || !fileUrl.trim() || typeof fileUrl !== 'string') {
-        return {
-          success: false,
-          message: 'URL cannot be empty and must be a string',
-          error: 'Invalid URL format'
-        };
+        return createResponse(false, null, 'URL不能为空且必须是字符串');
       }
       
       try {
         const parsedUrl = new URL(fileUrl);
         if (!parsedUrl.protocol || (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:')) {
-          return {
-            success: false,
-            message: 'Only HTTP and HTTPS protocols are supported',
-            error: 'Invalid protocol'
-          };
+          return createResponse(false, null, '仅支持HTTP和HTTPS协议');
         }
       } catch (e) {
-        return {
-          success: false,
-          message: 'Invalid URL format: ' + e.message,
-          error: 'URL parsing error'
-        };
+        return createResponse(false, null, '无效的URL格式: ' + e.message);
       }
       
       // 获取配置文件目录
-      const configDir = utils.getConfigDir();
-      logger.info('Config directory:', configDir);
+      const configDir = getConfigDir();
+      logger.info('配置目录:', configDir);
       
       // 如果没有提供自定义文件名，从URL中提取
       if (!customFileName) {
@@ -70,7 +100,7 @@ function setup() {
       // 如果设置为默认配置，强制文件名为sing-box.json
       if (isDefaultConfig) {
         customFileName = 'sing-box.json';
-        logger.info('Setting as default config, renamed to:', customFileName);
+        logger.info('设置为默认配置，重命名为:', customFileName);
       }
       
       // 确保文件名是安全的
@@ -78,39 +108,35 @@ function setup() {
       
       // 完整的保存路径
       const filePath = path.join(configDir, customFileName);
-      logger.info('File will be saved to:', filePath);
+      logger.info('文件将保存到:', filePath);
       
       // 检查文件夹是否可写
       try {
         // 检查目录是否可写
         fs.accessSync(configDir, fs.constants.W_OK);
       } catch (err) {
-        return {
-          success: false,
-          message: 'Cannot write to config folder: ' + err.message,
-          error: 'Permission denied'
-        };
+        return createResponse(false, null, '无法写入配置文件夹: ' + err.message);
       }
       
       // 使用适当的协议
       const parsedUrlForProtocol = new URL(fileUrl);
       const protocol = parsedUrlForProtocol.protocol === 'https:' ? https : http;
-      const mainWindow = utils.getMainWindow();
+      const mainWindow = getMainWindow();
       
       return new Promise((resolve, reject) => {
         // 创建请求
         const request = protocol.get(fileUrl, (response) => {
           // 检查状态码
           if (response.statusCode !== 200) {
-            let errorMessage = `HTTP Error: ${response.statusCode}`;
+            let errorMessage = `HTTP错误: ${response.statusCode}`;
             if (response.statusCode === 404) {
-              errorMessage = 'File not found on server (404)';
+              errorMessage = '在服务器上找不到文件 (404)';
             } else if (response.statusCode === 403) {
-              errorMessage = 'Access forbidden (403)';
+              errorMessage = '访问被禁止 (403)';
             } else if (response.statusCode === 401) {
-              errorMessage = 'Authentication required (401)';
+              errorMessage = '需要身份验证 (401)';
             } else if (response.statusCode >= 500) {
-              errorMessage = 'Server error, please try again later';
+              errorMessage = '服务器错误，请稍后重试';
             }
             
             reject(new Error(errorMessage));
@@ -120,7 +146,7 @@ function setup() {
           // 检查内容类型，如果服务器返回了明确的错误页面类型，可能是被重定向了
           const contentType = response.headers['content-type'];
           if (contentType && contentType.includes('text/html') && !fileUrl.endsWith('.html')) {
-            reject(new Error('Server returned HTML instead of a file. This URL may be a web page, not a downloadable file.'));
+            reject(new Error('服务器返回HTML而不是文件。此URL可能是网页，而不是可下载文件。'));
             return;
           }
           
@@ -145,7 +171,7 @@ function setup() {
           }
           
           const filePath = path.join(configDir, customFileName);
-          logger.info('File will be saved to:', filePath);
+          logger.info('文件将保存到:', filePath);
           
           const file = fs.createWriteStream(filePath);
           response.pipe(file);
@@ -153,7 +179,7 @@ function setup() {
           file.on('error', (err) => {
             file.close();
             fs.unlink(filePath, () => {}); // 删除失败的文件
-            reject(new Error(`Failed to write file: ${err.message}`));
+            reject(new Error(`写入文件失败: ${err.message}`));
           });
           
           // 文件写入完成
@@ -171,83 +197,62 @@ function setup() {
             };
             
             try {
-              let metaCache = utils.readMetaCache();
+              let metaCache = readMetaCache();
               
               metaCache[customFileName] = metadata;
               
-              utils.writeMetaCache(metaCache);
-              logger.info('The profile metadata has been updated');
+              writeMetaCache(metaCache);
+              logger.info('配置文件元数据已更新');
             } catch (cacheErr) {
-              logger.error(`Failed to update meta.cache: ${cacheErr.message}`);
+              logger.error(`更新meta.cache失败: ${cacheErr.message}`);
             }
             
             // 通知渲染进程下载完成
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('download-complete', {
                 success: true,
-                message: `Profile saved to: ${filePath}`,
+                message: `配置文件已保存到: ${filePath}`,
                 path: filePath,
                 isDefaultConfig: isDefaultConfig,
                 url: fileUrl
               });
+              
+              // 触发profiles-changed事件，通知前端刷新配置文件列表
+              mainWindow.webContents.send('profiles-changed');
             }
             
             // 返回成功信息
-            resolve({
-              success: true,
-              message: `Profile saved to: ${filePath}`,
+            resolve(createResponse(true, {
+              message: `配置文件已保存到: ${filePath}`,
               path: filePath,
               isDefaultConfig: isDefaultConfig,
-              url: fileUrl
-            });
+              fileName: customFileName
+            }));
           });
         });
         
         // 处理请求错误
         request.on('error', (err) => {
-          logger.error('Download request error:', err);
-          try {
-            fs.unlinkSync(filePath);
-          } catch (e) {
-            // 忽略删除错误
-          }
-          
-          let errorMessage = err.message;
-          if (err.code === 'ENOTFOUND') {
-            errorMessage = 'Host not found. Please check your URL or internet connection.';
-          } else if (err.code === 'ECONNREFUSED') {
-            errorMessage = 'Connection refused. The server may be down or blocking requests.';
-          } else if (err.code === 'ECONNRESET') {
-            errorMessage = 'Connection reset. The connection was forcibly closed by the remote server.';
-          } else if (err.code === 'ETIMEDOUT') {
-            errorMessage = 'Connection timed out. The server took too long to respond.';
-          }
-          
-          reject(new Error(errorMessage));
+          reject(new Error(`下载请求错误: ${err.message}`));
         });
         
         // 设置请求超时
         request.setTimeout(30000, () => {
           request.destroy();
-          try {
-            fs.unlinkSync(filePath);
-          } catch (e) {
-            // 忽略删除错误
-          }
-          reject(new Error('Download request timed out. The server is taking too long to respond.'));
+          reject(new Error('下载请求超时'));
         });
       });
     } catch (error) {
-      logger.error('Failed to download profile:', error);
-      return {
-        success: false,
-        message: `Download failed: ${error.message}`,
-        error: error.toString()
-      };
+      logger.error('下载配置文件错误:', error);
+      return createResponse(false, null, error);
     }
-  });
-}
+  }
+};
 
+// 导出所有处理程序和辅助函数（供其他模块使用）
 module.exports = {
-  setup
-}; 
+  handlers,
+  getConfigDir,
+  readMetaCache,
+  writeMetaCache
+};

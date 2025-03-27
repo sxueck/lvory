@@ -8,16 +8,17 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { app } = require('electron');
+const { getAppDataDir } = require('./paths');
 
 class Logger {
   constructor() {
     this.enabled = true;
-    this.logDir = path.join(os.homedir(), 'AppData', 'Roaming', 'lvory', 'logs');
-    this.logFile = path.join(this.logDir, `log-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`);
-    this.mainWindow = null;
     
-    // 确保日志目录存在
-    this.ensureLogDirectory();
+    // 延迟初始化日志目录和文件，避免在模块加载阶段就访问文件系统
+    this.initialized = false;
+    this.logDir = null;
+    this.logFile = null;
+    this.mainWindow = null;
     
     // 日志缓存，用于保存历史记录和发送到前端
     this.logHistory = [];
@@ -32,8 +33,28 @@ class Logger {
     // 设置定时写入
     this.flushTimer = setInterval(() => this.flushLogBuffer(), this.flushInterval);
     
-    // 初始化消息
-    this.info('日志系统初始化完成');
+    // 确保初始化
+    this.initialize();
+  }
+  
+  /**
+   * 初始化日志系统
+   */
+  initialize() {
+    if (this.initialized) return;
+    
+    try {
+      this.logDir = path.join(getAppDataDir(), 'logs');
+      this.logFile = path.join(this.logDir, `log-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`);
+      
+      // 确保日志目录存在
+      this.ensureLogDirectory();
+      
+      this.initialized = true;
+      this.info('日志系统初始化完成');
+    } catch (error) {
+      console.error('日志系统初始化失败:', error);
+    }
   }
   
   /**
@@ -68,6 +89,11 @@ class Logger {
   log(type, message, data = {}) {
     if (!this.enabled) return;
     
+    // 确保日志系统已初始化
+    if (!this.initialized) {
+      this.initialize();
+    }
+    
     const timestamp = new Date().toISOString();
     const logEntry = {
       type,
@@ -75,6 +101,9 @@ class Logger {
       message,
       data
     };
+    
+    // 同时输出到控制台
+    console.log(`[${timestamp}] [${type}] ${message}`);
     
     this.addToBuffer(logEntry);
     this.addToHistory(logEntry);
@@ -98,7 +127,7 @@ class Logger {
    * 将缓冲区中的日志写入文件
    */
   flushLogBuffer() {
-    if (this.isWriting || this.logBuffer.length === 0) {
+    if (!this.initialized || this.isWriting || this.logBuffer.length === 0) {
       return;
     }
     

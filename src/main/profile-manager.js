@@ -9,6 +9,7 @@ const os = require('os');
 const logger = require('../utils/logger');
 const profileEngine = require('./engine/profiles-engine');
 const mappingDefinition = require('./engine/mapping-definition');
+const { getAppDataDir } = require('../utils/paths');
 
 // 当前配置文件路径
 let currentConfigPath = null;
@@ -18,6 +19,21 @@ let configCopyPath = null;
 
 // 映射定义缓存
 let mappingDefinitionCache = null;
+
+/**
+ * 获取配置目录
+ * @returns {String} 配置目录路径
+ */
+const getConfigDir = () => {
+  const appDataDir = getAppDataDir();
+  const configDir = path.join(appDataDir, 'configs');
+  
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+  
+  return configDir;
+};
 
 // 用户设置文件路径
 const getUserSettingsPath = () => {
@@ -50,26 +66,6 @@ const saveUserSettings = (settings) => {
     return false;
   }
 };
-
-/**
- * 获取应用数据目录
- * @returns {String} 应用数据目录路径
- */
-function getAppDataDir() {
-  const appDataDir = process.env.LOCALAPPDATA || '';
-  const appDir = path.join(appDataDir, 'lvory');
-  
-  // 确保目录存在
-  if (!fs.existsSync(appDir)) {
-    try {
-      fs.mkdirSync(appDir, { recursive: true });
-    } catch (error) {
-      logger.error(`创建应用数据目录失败: ${error.message}`);
-    }
-  }
-  
-  return appDir;
-}
 
 /**
  * 获取映射定义文件路径
@@ -293,13 +289,7 @@ function loadUserConfig() {
  */
 const scanProfileConfig = () => {
   try {
-    const appDataDir = getAppDataDir();
-    const configDir = path.join(appDataDir, 'configs');
-    
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-    
+    const configDir = getConfigDir();
     let fileToUse = null;
     
     // 优先使用已设置的配置文件路径
@@ -354,11 +344,7 @@ const scanProfileConfig = () => {
  * 获取配置文件路径
  * @returns {String} 配置文件路径
  */
-const getConfigPath = () => {
-  if (currentConfigPath) {
-    return currentConfigPath;
-  }
-  
+const getConfigPath = () => {  
   // 尝试从用户设置中加载上次使用的配置路径
   const userSettings = loadUserSettings();
   if (userSettings.lastConfigPath && fs.existsSync(userSettings.lastConfigPath)) {
@@ -368,9 +354,7 @@ const getConfigPath = () => {
   }
   
   // 否则使用默认配置路径
-  const appDataDir = getAppDataDir();
-  const configDir = path.join(appDataDir, 'configs');
-  const testConfigPath = path.join(configDir, 'profiles-test.json');
+  const configDir = getConfigDir();
   const configFilePath = path.join(configDir, 'sing-box.json');
   
   // 检查配置文件是否存在

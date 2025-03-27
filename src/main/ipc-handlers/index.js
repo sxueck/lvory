@@ -1,314 +1,239 @@
 /**
  * IPC事件处理模块入口
  * 统一管理Electron的IPC通信处理
+ * 提供优化的注册机制和二次注册拦截
  */
 const { ipcMain } = require('electron');
 const logger = require('../../utils/logger');
+const path = require('path');
+const { 
+  removeHandlers, 
+  isHandlerRegistered, 
+  getAllRegisteredChannels,
+  getRegistrationHistory,
+  register
+} = require('./core/registry');
 
-// 懒加载处理程序模块
-let windowHandlers;
-let profileHandlers; 
-let singboxHandlers;
-let downloadHandlers;
-let settingsHandlers;
-let updateHandlers;
-let nodeHistoryHandlers;
-
-let ipcHandlersRegistered = false;
-let lazyHandlersRegistered = false;
-
-// 所有需要移除的处理程序列表
-const HANDLERS_TO_REMOVE = [
-  // 配置相关
-  'get-config-path', 'set-config-path', 'open-config-dir',
-  // 配置文件相关
-  'get-profile-data', 'getProfileFiles', 'exportProfile', 'renameProfile', 
-  'deleteProfile', 'openFileInEditor', 'openConfigDir', 'getProfileMetadata', 
-  'updateProfile', 'updateAllProfiles', 'profiles-changed-listen', 
-  'profiles-changed-unlisten',
-  // Singbox相关
-  'singbox-start-core', 'singbox-stop-core', 'singbox-get-status', 
-  'singbox-get-version', 'singbox-check-installed', 'singbox-check-config', 
-  'singbox-format-config', 'singbox-download-core', 'singbox-run', 'singbox-stop',
-  // 下载相关
-  'download-core', 'download-profile',
-  // 窗口相关
-  'show-window', 'quit-app',
-  // 日志相关
-  'get-log-history', 'clear-logs',
-  // 设置相关
-  'set-auto-launch', 'get-auto-launch', 'save-settings', 'get-settings',
-  // 节点历史数据相关
-  'get-node-history', 'is-node-history-enabled', 'load-all-node-history',
-  'get-node-total-traffic', 'get-all-nodes-total-traffic', 'reset-node-total-traffic',
-  // 用户配置相关
-  'get-user-config', 'save-user-config',
-  // 规则集相关
-  'get-rule-sets', 'get-node-groups',
-  // 映射引擎相关
-  'get-mapping-definition', 'save-mapping-definition', 'apply-config-mapping',
-  'get-mapping-definition-path', 'get-default-mapping-definition',
-  'get-protocol-template', 'create-protocol-mapping'
+// 模块列表
+const moduleList = [
+  // 核心模块（优先加载）
+  'window',
+  'profile', 
+  'singbox',
+  'sync',
+  // 其他模块
+  'download',
+  'settings',
+  'update',
+  'nodeHistory',
+  'status'
 ];
 
-// 处理程序类型映射，用于确定哪个模块负责处理特定的channel
-const HANDLER_TYPE_MAP = {
-  // 窗口相关
-  'window': ['window-', 'show-window', 'quit-app'],
-  
-  // 设置相关
-  'settings': ['set-auto-launch', 'get-auto-launch', 'save-settings', 'get-settings'],
-  
-  // 配置文件相关
-  'profile': [
-    'get-config-path', 'set-config-path', 'open-config-dir',
-    'getProfileFiles', 'get-profile-data', 'updateProfile', 'deleteProfile', 
-    'exportProfile', 'renameProfile', 'openFileInEditor', 'getProfileMetadata', 
-    'updateAllProfiles', 'profiles-changed',
-    'get-user-config', 'save-user-config',
-    'get-rule-sets', 'get-node-groups',
-    'get-mapping-definition', 'save-mapping-definition', 'apply-config-mapping',
-    'get-mapping-definition-path', 'get-default-mapping-definition',
-    'get-protocol-template', 'create-protocol-mapping'
-  ],
-  
-  // singbox相关
-  'singbox': ['singbox-'],
-  
-  // 下载相关
-  'download': ['download-'],
-  
-  // 更新相关
-  'update': ['update-'],
-  
-  // 节点历史数据相关
-  'nodeHistory': ['node-', 'get-node-', 'is-node-', 'load-all-node-', 'reset-node-']
-};
+// 注册状态标志
+let ipcHandlersRegistered = false;
+
+// 注册锁，防止并发注册
+let registrationLock = false;
+
+// 注册尝试计数
+let registrationAttempts = 0;
+const MAX_REGISTRATION_ATTEMPTS = 3;
 
 /**
- * 按需加载指定模块
- * @param {String} name 模块名称
- * @returns {Object} 加载的模块
+ * 注册内部处理程序
  */
-function loadHandlerModule(name) {
-  try {
-    logger.info(`懒加载IPC处理程序模块: ${name}`);
-    return require(`./${name}-handlers`);
-  } catch (error) {
-    logger.error(`加载IPC处理程序模块 ${name} 失败:`, error);
-    return null;
-  }
-}
-
-/**
- * 确定处理程序类型
- * @param {String} channel IPC通道名称
- * @returns {String|null} 处理程序类型
- */
-function determineHandlerType(channel) {
-  for (const [type, patterns] of Object.entries(HANDLER_TYPE_MAP)) {
-    for (const pattern of patterns) {
-      if (pattern.endsWith('-') ? channel.startsWith(pattern) : channel === pattern) {
-        return type;
-      }
+function registerInternalHandlers() {
+  for (const [channel, handler] of Object.entries(internalHandlers)) {
+    try {
+      // 使用registry模块的register函数注册
+      register('InternalModule', channel, handler);
+      logger.debug(`注册内部处理程序: ${channel}`);
+    } catch (error) {
+      logger.error(`注册内部处理程序失败: ${channel}`, error);
     }
   }
-  return null;
-}
-
-/**
- * 设置懒加载处理程序代理
- */
-function setupLazyLoadHandlers() {
-  if (lazyHandlersRegistered) {
-    return;
-  }
-  
-  // 预先加载singbox处理程序，确保核心功能正常
-  if (!singboxHandlers) {
-    singboxHandlers = loadHandlerModule('singbox');
-    if (singboxHandlers) singboxHandlers.setup();
-    logger.info('已预先加载SingBox处理程序');
-  }
-  
-  // 注册懒加载处理程序
-  const handledChannels = ipcMain._channels ? Object.keys(ipcMain._channels) : [];
-  
-  // 获取所有已注册的处理程序通道
-  HANDLERS_TO_REMOVE.forEach(channel => {
-    if (!handledChannels.includes(channel)) {
-      // 确定该通道应该由哪个模块处理
-      const handlerType = determineHandlerType(channel);
-      
-      if (!handlerType) {
-        logger.warn(`无法确定处理程序类型: ${channel}`);
-        return;
-      }
-      
-      try {
-        // 创建代理处理程序
-        ipcMain.handle(channel, async (event, ...args) => {
-          try {
-            // 加载对应的处理模块
-            const handler = await loadHandlerForType(handlerType);
-            if (!handler) {
-              throw new Error(`找不到处理程序类型: ${handlerType}`);
-            }
-            
-            // 如果加载失败或处理程序仍然不存在，返回错误
-            const handledChannels = ipcMain._channels ? Object.keys(ipcMain._channels) : [];
-            if (!handledChannels.includes(channel)) {
-              logger.error(`即使加载了模块，处理程序依然不存在: ${channel}`);
-              return { error: `处理程序不可用: ${channel}` };
-            }
-            
-            // 此时应该已经正确注册了处理程序，通过IPC调用处理
-            return { success: true, message: '处理程序已加载' };
-          } catch (error) {
-            logger.error(`执行处理程序时出错: ${channel}`, error);
-            return { error: error.message || '处理程序执行错误' };
-          }
-        });
-        logger.info(`为 ${channel} 设置了懒加载代理`);
-      } catch (error) {
-        logger.error(`为 ${channel} 注册懒加载代理失败:`, error);
-      }
-    }
-  });
-  
-  lazyHandlersRegistered = true;
-  logger.info('懒加载IPC处理程序代理设置完成');
-}
-
-/**
- * 加载特定类型的处理程序并返回处理结果
- * @param {String} type 处理程序类型
- * @returns {Promise<Object>} 加载的模块
- */
-async function loadHandlerForType(type) {
-  let handler = null;
-  
-  switch (type) {
-    case 'window':
-      if (!windowHandlers) {
-        windowHandlers = loadHandlerModule('window');
-        if (windowHandlers) windowHandlers.setup();
-      }
-      handler = windowHandlers;
-      break;
-    case 'settings':
-      if (!settingsHandlers) {
-        settingsHandlers = loadHandlerModule('settings');
-        if (settingsHandlers) settingsHandlers.setup();
-      }
-      handler = settingsHandlers;
-      break;
-    case 'profile':
-      if (!profileHandlers) {
-        profileHandlers = loadHandlerModule('profile');
-        if (profileHandlers) profileHandlers.setup();
-      }
-      handler = profileHandlers;
-      break;
-    case 'singbox':
-      if (!singboxHandlers) {
-        singboxHandlers = loadHandlerModule('singbox');
-        if (singboxHandlers) singboxHandlers.setup();
-      }
-      handler = singboxHandlers;
-      break;
-    case 'download':
-      if (!downloadHandlers) {
-        downloadHandlers = loadHandlerModule('download');
-        if (downloadHandlers) downloadHandlers.setup();
-      }
-      handler = downloadHandlers;
-      break;
-    case 'update':
-      if (!updateHandlers) {
-        updateHandlers = loadHandlerModule('update');
-        if (updateHandlers) updateHandlers.setup();
-      }
-      handler = updateHandlers;
-      break;
-    case 'nodeHistory':
-      if (!nodeHistoryHandlers) {
-        nodeHistoryHandlers = loadHandlerModule('node-history');
-        if (nodeHistoryHandlers) nodeHistoryHandlers.setup();
-      }
-      handler = nodeHistoryHandlers;
-      break;
-  }
-  
-  return handler;
 }
 
 /**
  * 注册所有IPC处理程序
+ * @returns {Promise<boolean>} 是否成功注册
  */
-function setupHandlers() {
-  if (ipcHandlersRegistered) {
-    logger.warn('IPC处理程序已注册，跳过');
-    return;
+async function setupHandlers() {
+  // 增加注册尝试计数
+  registrationAttempts++;
+  
+  // 检查是否超过最大尝试次数
+  if (registrationAttempts > MAX_REGISTRATION_ATTEMPTS) {
+    logger.error(`IPC处理程序注册失败: 超过最大尝试次数 (${MAX_REGISTRATION_ATTEMPTS})`);
+    return false;
   }
   
+  // 热重载环境下，先清理旧的处理程序
+  if (process.env.NODE_ENV === 'development' && ipcHandlersRegistered) {
+    logger.info('开发环境: 清理旧IPC处理程序');
+    await cleanupHandlers();
+  }
+  
+  // 检查是否已注册（清理后应该为false）
+  if (ipcHandlersRegistered) {
+    logger.warn('IPC处理程序已注册，跳过');
+    return true;
+  }
+  
+  // 检查注册锁
+  if (registrationLock) {
+    logger.warn('IPC处理程序注册正在进行中');
+    return false;
+  }
+  
+  // 获取注册锁
+  registrationLock = true;
+  
   try {
-    // 立即加载必要的处理程序
-    windowHandlers = loadHandlerModule('window');
-    settingsHandlers = loadHandlerModule('settings');
+    logger.info('开始注册IPC处理程序');
     
-    if (windowHandlers) windowHandlers.setup();
-    if (settingsHandlers) settingsHandlers.setup();
+    // 划分核心模块和其他模块
+    const coreModules = moduleList.filter(name => 
+      ['window', 'profile', 'singbox', 'sync'].includes(name)
+    );
+    const otherModules = moduleList.filter(name => 
+      !['window', 'profile', 'singbox', 'sync'].includes(name)
+    );
     
-    // 立即加载profile处理程序，因为它包含很多关键功能
-    profileHandlers = loadHandlerModule('profile');
-    if (profileHandlers) profileHandlers.setup();
+    // 优先加载核心模块
+    let coreSuccess = 0;
+    for (const moduleName of coreModules) {
+      if (await loadModule(moduleName, true)) {
+        coreSuccess++;
+      }
+    }
+    logger.info(`核心模块加载: ${coreSuccess}/${coreModules.length}个成功`);
     
-    // 立即加载singbox处理程序，因为它是核心功能
-    singboxHandlers = loadHandlerModule('singbox');
-    if (singboxHandlers) singboxHandlers.setup();
+    // 加载其他模块
+    let otherSuccess = 0;
+    for (const moduleName of otherModules) {
+      if (await loadModule(moduleName, false)) {
+        otherSuccess++;
+      }
+    }
+    logger.info(`其他模块加载: ${otherSuccess}/${otherModules.length}个成功`);
     
-    // 设置懒加载代理处理其他模块
-    setupLazyLoadHandlers();
+    // 注册内部处理程序
+    registerInternalHandlers();
     
     ipcHandlersRegistered = true;
-    logger.info('核心IPC处理程序注册成功，其他处理程序将按需加载');
+    logger.info('IPC处理程序注册完成');
+    return true;
   } catch (error) {
     logger.error('注册IPC处理程序失败:', error);
+    return false;
+  } finally {
+    // 释放注册锁
+    registrationLock = false;
+  }
+}
+
+/**
+ * 加载单个模块
+ * @param {String} moduleName 模块名称
+ * @param {Boolean} isCore 是否为核心模块
+ * @returns {Promise<boolean>}
+ */
+async function loadModule(moduleName, isCore = false) {
+  try {
+    // 处理模块名称映射（实际目录名）
+    const moduleNameMap = {
+      'window': 'window',
+      'profile': 'profile',
+      'singbox': 'singbox',
+      'sync': 'sync',
+      'download': 'download',
+      'settings': 'settings',
+      'update': 'update',
+      'nodeHistory': 'node-history',
+      'status': 'status'
+    };
+    
+    // 获取实际目录名
+    const dirName = moduleNameMap[moduleName] || moduleName.toLowerCase();
+    
+    // 构建模块路径
+    const modulePath = path.join(__dirname, 'modules', dirName);
+    
+    logger.info(`正在加载模块: ${moduleName}，路径: ${modulePath}`);
+    
+    try {
+      // 尝试加载模块
+      const moduleInstance = require(modulePath);
+      
+      logger.info(`模块 ${moduleName} 加载成功，接口: ${Object.keys(moduleInstance).join(', ')}`);
+      
+      // 初始化模块
+      if (moduleInstance && typeof moduleInstance.setup === 'function') {
+        await moduleInstance.setup();
+        return true;
+      } else {
+        logger.warn(`模块 ${moduleName} 缺少setup方法`);
+        return false;
+      }
+    } catch (moduleError) {
+      logger.error(`模块 ${moduleName} 加载失败: ${moduleError.message}`);
+      return false;
+    }
+  } catch (error) {
+    logger.error(`加载模块 ${moduleName} 失败:`, error);
+    return false;
   }
 }
 
 /**
  * 清理所有IPC处理程序
+ * @returns {Promise<void>}
  */
-function cleanupHandlers() {
-  if (!ipcHandlersRegistered && !lazyHandlersRegistered) {
+async function cleanupHandlers() {
+  if (!ipcHandlersRegistered) {
     return;
   }
   
-  logger.info('正在清理IPC处理程序...');
+  logger.info('清理IPC处理程序');
+  let removedCount = 0;
   
-  // 移除所有注册的处理程序
-  HANDLERS_TO_REMOVE.forEach((channel) => {
+  // 移除已注册的通道
+  const registeredChannels = getAllRegisteredChannels();
+  for (const channel of registeredChannels) {
     try {
-      // 对于监听器类型的channel，需要特殊处理
-      if (channel.endsWith('-listen') || channel.endsWith('-unlisten')) {
-        ipcMain.removeAllListeners(channel);
-      } else {
-        // 移除invoke类型的处理程序
+      if (ipcMain.removeHandler) {
         ipcMain.removeHandler(channel);
       }
+      ipcMain.removeAllListeners(channel);
+      removedCount++;
     } catch (error) {
-      logger.warn(`移除处理程序 ${channel} 失败:`, error);
+      logger.debug(`移除通道失败: ${channel}`, error);
     }
-  });
+  }
+  
+  // 重置registry并强制重新注册
+  const registry = require('./core/registry');
+  registry.resetRegistry();
   
   ipcHandlersRegistered = false;
-  lazyHandlersRegistered = false;
-  logger.info('IPC处理程序已清理');
+  logger.info(`IPC处理程序清理: 移除了${removedCount}个`);
+}
+
+/**
+ * 获取注册状态
+ * @returns {Object} 注册状态
+ */
+function getRegistrationStatus() {
+  return {
+    registered: ipcHandlersRegistered,
+    attempts: registrationAttempts,
+    channels: getAllRegisteredChannels()
+  };
 }
 
 module.exports = {
   setupHandlers,
-  cleanupHandlers
-}; 
+  cleanupHandlers,
+  getRegistrationStatus
+};

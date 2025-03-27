@@ -1,55 +1,92 @@
 /**
  * SingBox相关IPC处理程序
  */
-const { ipcMain } = require('electron');
-const logger = require('../../utils/logger');
-const utils = require('./utils');
-const singbox = require('../../utils/sing-box');
-const profileManager = require('../profile-manager');
-const coreDownloader = require('../core-downloader');
+const logger = require('../../../../utils/logger');
+const singbox = require('../../../../utils/sing-box');
+const profileManager = require('../../../profile-manager');
+const coreDownloader = require('../../../core-downloader');
 const fs = require('fs');
+const { getMainWindow, createResponse, sendToMainWindow } = require('../../core/utils');
 
-/**
- * 设置SingBox相关IPC处理程序
- */
-function setup() {
+// SingBox相关处理程序对象
+const handlers = {
   // 检查sing-box是否安装
-  ipcMain.handle('singbox-check-installed', () => {
-    return { installed: singbox.checkInstalled() };
-  });
+  'singbox-check-installed': async () => {
+    return createResponse(true, { installed: singbox.checkInstalled() });
+  },
   
   // 获取sing-box版本
-  ipcMain.handle('singbox-get-version', async () => {
+  'singbox-get-version': async () => {
     try {
-      return await singbox.getVersion();
+      const versionInfo = await singbox.getVersion();
+      return versionInfo;
     } catch (error) {
       logger.error('获取sing-box版本失败:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
+  },
+  
+  // 获取sing-box状态
+  'singbox-get-status': async () => {
+    try {
+      const status = singbox.getStatus();
+      return createResponse(true, {
+        isRunning: singbox.isRunning(),
+        processCount: status.processCount,
+        processes: status.processes,
+        processDetails: status.processDetails,
+        proxyConfig: singbox.proxyConfig
+      });
+    } catch (error) {
+      logger.error('获取sing-box状态失败:', error);
+      return createResponse(false, null, error);
+    }
+  },
+  
+  // 获取规则集
+  'get-rule-sets': async () => {
+    try {
+      const config = profileManager.getCurrentConfig();
+      return createResponse(true, { ruleSets: config?.rule_sets || [] });
+    } catch (error) {
+      logger.error('获取规则集失败:', error);
+      return createResponse(false, null, error);
+    }
+  },
+  
+  // 获取节点组
+  'get-node-groups': async () => {
+    try {
+      const config = profileManager.getCurrentConfig();
+      return createResponse(true, { nodeGroups: config?.outbounds || [] });
+    } catch (error) {
+      logger.error('获取节点组失败:', error);
+      return createResponse(false, null, error);
+    }
+  },
   
   // 检查配置
-  ipcMain.handle('singbox-check-config', async (event, { configPath }) => {
+  'singbox-check-config': async (event, { configPath }) => {
     try {
       return await singbox.checkConfig(configPath);
     } catch (error) {
       logger.error('检查配置错误:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
+  },
   
   // 格式化配置
-  ipcMain.handle('singbox-format-config', async (event, { configPath }) => {
+  'singbox-format-config': async (event, { configPath }) => {
     try {
       return await singbox.formatConfig(configPath);
     } catch (error) {
       logger.error('格式化配置错误:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
+  },
   
   // 启动sing-box内核
-  ipcMain.handle('singbox-start-core', async (event, options) => {
+  'singbox-start-core': async (event, options) => {
     try {
       let configPath;
       if (options && options.configPath) {
@@ -76,13 +113,10 @@ function setup() {
       logger.info('启动内核前检查版本');
       const versionResult = await singbox.getVersion();
       if (versionResult.success) {
-        const mainWindow = utils.getMainWindow();
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('core-version-update', {
-            version: versionResult.version,
-            fullOutput: versionResult.fullOutput
-          });
-        }
+        sendToMainWindow('core-version-update', {
+          version: versionResult.version,
+          fullOutput: versionResult.fullOutput
+        });
       }
       
       logger.info(`启动sing-box内核，使用配置文件副本: ${configPath}`);
@@ -97,54 +131,44 @@ function setup() {
       return result;
     } catch (error) {
       logger.error('启动sing-box内核失败:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
+  },
   
   // 停止sing-box内核
-  ipcMain.handle('singbox-stop-core', async () => {
+  'singbox-stop-core': async () => {
     try {
       logger.info('停止sing-box内核');
-      return singbox.stopCore();
+      return await singbox.stopCore();
     } catch (error) {
       logger.error('停止sing-box内核失败:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
-  
-  // 获取sing-box状态
-  ipcMain.handle('singbox-get-status', async () => {
-    try {
-      return singbox.getStatus();
-    } catch (error) {
-      logger.error('获取sing-box状态失败:', error);
-      return { success: false, error: error.message };
-    }
-  });
+  },
   
   // 下载sing-box核心
-  ipcMain.handle('singbox-download-core', async () => {
+  'singbox-download-core': async () => {
     try {
-      const mainWindow = utils.getMainWindow();
+      const mainWindow = getMainWindow();
       return await coreDownloader.downloadCore(mainWindow);
     } catch (error) {
       logger.error('下载sing-box核心失败:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
+  },
   
   // 下载核心
-  ipcMain.handle('download-core', async (event) => {
+  'download-core': async (event) => {
     try {
-      const mainWindow = utils.getMainWindow();
+      const mainWindow = getMainWindow();
       const result = await coreDownloader.downloadCore(mainWindow);
       // 如果下载成功，尝试获取版本信息
       if (result.success) {
         setTimeout(async () => {
           const versionInfo = await singbox.getVersion();
-          if (versionInfo.success && mainWindow && !mainWindow.isDestroyed()) {
+          if (versionInfo.success) {
             // 通知渲染进程更新版本信息
-            mainWindow.webContents.send('core-version-update', {
+            sendToMainWindow('core-version-update', {
               version: versionInfo.version,
               fullOutput: versionInfo.fullOutput
             });
@@ -154,15 +178,14 @@ function setup() {
       return result;
     } catch (error) {
       logger.error('下载内核处理器错误:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
+  },
   
   // 注册sing-box运行服务的IPC处理程序
-  ipcMain.handle('singbox-run', async (event, args) => {
+  'singbox-run': async (event, args) => {
     try {
       const { configPath } = args;
-      const mainWindow = utils.getMainWindow();
       
       // 检查是否已有运行的进程
       if (singbox.process) {
@@ -176,17 +199,13 @@ function setup() {
       
       // 定义输出回调，将sing-box输出传递给渲染进程
       const outputCallback = (data) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('singbox-output', data);
-        }
+        sendToMainWindow('singbox-output', data);
       };
       
       // 定义退出回调
       const exitCallback = (code, error) => {
         logger.info(`sing-box进程退出，退出码: ${code}${error ? ', 错误: ' + error : ''}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('singbox-exit', { code, error });
-        }
+        sendToMainWindow('singbox-exit', { code, error });
       };
       
       // 解析配置文件中的端口
@@ -206,12 +225,12 @@ function setup() {
       return result;
     } catch (error) {
       logger.error('运行服务错误:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
+  },
   
   // 停止运行的sing-box服务
-  ipcMain.handle('singbox-stop', async () => {
+  'singbox-stop': async () => {
     try {
       // 先禁用系统代理
       await singbox.disableSystemProxy();
@@ -219,11 +238,12 @@ function setup() {
       return await singbox.stopCore();
     } catch (error) {
       logger.error('停止服务错误:', error);
-      return { success: false, error: error.message };
+      return createResponse(false, null, error);
     }
-  });
-}
+  }
+};
 
+// 导出所有处理程序
 module.exports = {
-  setup
+  handlers
 }; 

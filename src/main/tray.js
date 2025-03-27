@@ -43,7 +43,7 @@ const createTray = () => {
     tray = new Tray(emptyImage);
   }
   
-  tray.setToolTip('LVORY');
+  tray.setToolTip('lvory');
   
   // 更新托盘菜单函数
   updateTrayMenuCallback = (isRunning = false) => {
