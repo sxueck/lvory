@@ -15,7 +15,7 @@ import useProfileUpdate from './hooks/useProfileUpdate';
 import usePrivacySettings from '../../hooks/usePrivacySettings';
 import { debouncedCall } from '../../utils/ipcOptimizer';
 
-const Dashboard = ({ activeView = 'dashboard', onSwitchToActivity }) => {
+const Dashboard = ({ activeView = 'dashboard', onSwitchToActivity, onSwitchToSettings }) => {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [profileData, setProfileData] = useState([]);
@@ -209,6 +209,7 @@ const Dashboard = ({ activeView = 'dashboard', onSwitchToActivity }) => {
                 downloadProgress={downloadProgress}
                 downloadMessage={downloadMessage}
                 onSwitchToActivity={onSwitchToActivity}
+                onSwitchToSettings={onSwitchToSettings}
                 privacySettings={privacySettings}
                 onPrivacySettingsChange={handlePrivacySettingsChange}
                 style={{ padding: '5px 0' }}

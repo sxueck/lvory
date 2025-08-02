@@ -14,6 +14,7 @@ let updateHandlers;
 let nodeHistoryHandlers;
 let tracerouteHandlers;
 let coreManagerHandlers;
+let coreHandlers;
 
 let ipcHandlersRegistered = false;
 
@@ -32,7 +33,7 @@ const HANDLERS_TO_REMOVE = [
   'singbox-format-config', 'singbox-download-core', 'singbox-run', 'singbox-stop',
   // 下载相关
   'download-core', 'download-profile',
-  // 窗口相关 - 已迁移到新的IPC系统
+  // 窗口相关
   'show-window', 'quit-app', 'window-minimize', 'window-maximize', 'window-close',
   // 日志相关
   'get-log-history', 'clear-logs', 'get-connection-log-history', 'clear-connection-logs',
@@ -102,6 +103,7 @@ function setupHandlers() {
     nodeHistoryHandlers = loadHandlerModule('node-history');
     tracerouteHandlers = loadHandlerModule('traceroute');
     coreManagerHandlers = loadHandlerModule('core-manager');
+    coreHandlers = loadHandlerModule('core');
     
     // 导入工具模块
     const utils = require('./utils');
@@ -115,6 +117,7 @@ function setupHandlers() {
     if (nodeHistoryHandlers) nodeHistoryHandlers.setup();
     if (tracerouteHandlers) tracerouteHandlers.registerTracerouteHandlers();
     if (coreManagerHandlers) coreManagerHandlers.setup();
+    if (coreHandlers) coreHandlers.setup();
     
     // 设置网络接口处理程序
     utils.getNetworkInterfaces();

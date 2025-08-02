@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import MessageBox from '../components/MessageBox';
 
 // 创建一个容器并挂载到DOM
@@ -40,17 +40,17 @@ const MessageBoxManager = () => {
     queue: []
   });
 
-  // 显示下一个消息
-  const showNextMessage = () => {
-    if (state.queue.length > 0) {
-      const nextMessage = state.queue[0];
-      const newQueue = state.queue.slice(1);
+  const showNextMessage = (currentState) => {
+    const stateToUse = currentState || state;
+    if (stateToUse.queue.length > 0) {
+      const nextMessage = stateToUse.queue[0];
+      const newQueue = stateToUse.queue.slice(1);
       setState({
-        ...state,
+        ...stateToUse,
         isOpen: true,
         message: nextMessage.message,
         onClose: () => {
-          if (nextMessage.onClose) {
+          if (typeof nextMessage.onClose === 'function') {
             nextMessage.onClose();
           }
           handleClose(newQueue);
@@ -62,45 +62,54 @@ const MessageBoxManager = () => {
 
   // 关闭当前消息
   const handleClose = (newQueue) => {
-    setState({
-      ...state,
-      isOpen: false,
-      message: '',
-      onClose: null,
-      queue: newQueue || state.queue
-    });
+    setState(prevState => {
+      const updatedState = {
+        ...prevState,
+        isOpen: false,
+        message: '',
+        onClose: null,
+        queue: newQueue || prevState.queue
+      };
 
-    // 设置延迟以确保关闭动画完成后再显示下一个消息
-    setTimeout(() => {
-      if ((newQueue || state.queue).length > 0) {
-        showNextMessage();
-      }
-    }, 300);
+      // 设置延迟以确保关闭动画完成后再显示下一个消息
+      setTimeout(() => {
+        if ((newQueue || prevState.queue).length > 0) {
+          showNextMessage(updatedState);
+        }
+      }, 300);
+
+      return updatedState;
+    });
   };
 
   // 添加新消息到队列
-  window.showMessage = (message, onClose) => {
+  const addMessage = (message, onClose) => {
     const newMessage = { message, onClose };
-    
-    if (!state.isOpen) {
-      setState({
-        ...state,
-        isOpen: true,
-        message: newMessage.message,
-        onClose: () => {
-          if (newMessage.onClose) {
-            newMessage.onClose();
+
+    setState(prevState => {
+      if (!prevState.isOpen) {
+        return {
+          ...prevState,
+          isOpen: true,
+          message: newMessage.message,
+          onClose: () => {
+            if (typeof newMessage.onClose === 'function') {
+              newMessage.onClose();
+            }
+            handleClose();
           }
-          handleClose();
-        }
-      });
-    } else {
-      setState({
-        ...state,
-        queue: [...state.queue, newMessage]
-      });
-    }
+        };
+      } else {
+        return {
+          ...prevState,
+          queue: [...prevState.queue, newMessage]
+        };
+      }
+    });
   };
+
+  // 将函数暴露到全局
+  window.showMessage = addMessage;
 
   return (
     <MessageBox

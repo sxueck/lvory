@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { getAboutInfo } from '../../utils/version';
 import VersionManager from '../VersionManager';
 import SingBoxCoreManager from './SingBoxCoreManager';
+import CoreSettings from './CoreSettings';
 
 const styles = {
   container: {
@@ -1071,43 +1072,7 @@ const SettingsContent = ({ section }) => {
         );
 
       case 'core':
-        return (
-          <div>
-            <SettingsSection
-              title={t('settings.coreManagement')}
-              description={t('settings.coreManagementDesc')}
-            >
-              {/* 当前内核版本显示 */}
-              <ReadOnlyLabel
-                label={t('settings.currentCoreVersion')}
-                value={aboutInfo.CORE_VERSION}
-                loading={false}
-                error={null}
-              />
-
-              {/* 内核管理按钮 */}
-              <button
-                onClick={() => setShowCoreManager(true)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#64748b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  marginTop: '16px'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#475569'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = '#64748b'}
-              >
-                {t('settings.manageCoreVersions')}
-              </button>
-            </SettingsSection>
-          </div>
-        );
+        return <CoreSettings />;
 
       case 'about':
         return (

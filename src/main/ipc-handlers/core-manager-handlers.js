@@ -7,6 +7,8 @@ const { promisify } = require('util');
 const { pipeline } = require('stream');
 const logger = require('../../utils/logger');
 const utils = require('./utils');
+const { CORE_TYPES, getCoreConfig } = require('../../constants/core-types');
+const universalDownloader = require('../core-downloader-universal');
 
 const streamPipeline = promisify(pipeline);
 
@@ -491,6 +493,71 @@ function setup() {
 
     } catch (error) {
       logger.error(`删除版本 ${version} 失败:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // 通用内核版本管理 - 获取 releases
+  ipcMain.handle('core-manager-get-releases', async (event, coreType) => {
+    try {
+      if (coreType === CORE_TYPES.SINGBOX) {
+        return await getSingBoxReleases();
+      } else if (coreType === CORE_TYPES.MIHOMO) {
+        const releases = await universalDownloader.getGitHubReleases(coreType);
+        return {
+          success: true,
+          releases: releases.map(release => ({
+            tag_name: release.tag_name,
+            name: release.name,
+            published_at: release.published_at,
+            prerelease: release.prerelease
+          }))
+        };
+      } else {
+        return { success: false, error: `不支持的内核类型: ${coreType}` };
+      }
+    } catch (error) {
+      logger.error(`获取 ${coreType} releases 失败:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // 通用内核版本管理 - 下载版本
+  ipcMain.handle('core-manager-download-core', async (event, coreType, version) => {
+    try {
+      const utils = require('./utils');
+      const mainWindow = utils.getMainWindow();
+
+      const result = await universalDownloader.downloadCore(coreType, version, mainWindow);
+      return result;
+    } catch (error) {
+      logger.error(`下载 ${coreType} ${version} 失败:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // 通用内核版本管理 - 获取最新版本
+  ipcMain.handle('core-manager-get-latest-version', async (event, coreType) => {
+    try {
+      const latestVersion = await universalDownloader.getLatestVersion(coreType);
+      return { success: true, version: latestVersion };
+    } catch (error) {
+      logger.error(`获取 ${coreType} 最新版本失败:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // 检查内核是否已安装
+  ipcMain.handle('core-manager-check-core-installed', async (event, coreType) => {
+    try {
+      const config = getCoreConfig(coreType);
+      const appDataDir = utils.getAppDataDir();
+      const binaryPath = path.join(appDataDir, 'bin', config.binaryName);
+
+      const installed = fs.existsSync(binaryPath);
+      return { success: true, installed, path: binaryPath };
+    } catch (error) {
+      logger.error(`检查 ${coreType} 安装状态失败:`, error);
       return { success: false, error: error.message };
     }
   });

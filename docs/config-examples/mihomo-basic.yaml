@@ -1,0 +1,157 @@
+# Mihomo 基础配置示例
+# 适用于大多数用户的基本配置
+
+# 端口配置
+port: 7890                    # HTTP 代理端口
+socks-port: 7891              # SOCKS5 代理端口  
+mixed-port: 7892              # 混合代理端口（推荐使用）
+allow-lan: false              # 是否允许局域网连接
+
+# 运行模式
+mode: rule                    # rule: 规则模式, global: 全局模式, direct: 直连模式
+
+# 日志级别
+log-level: info               # silent/error/warning/info/debug
+
+# 外部控制器（用于 API 和 Web UI）
+external-controller: 127.0.0.1:9090
+# external-ui: ui             # Web UI 目录（可选）
+
+# IPv6 支持
+ipv6: false
+
+# DNS 配置
+dns:
+  enable: true
+  listen: 0.0.0.0:53
+  # 默认 DNS 服务器（用于解析 DNS 服务器域名）
+  default-nameserver:
+    - 223.5.5.5
+    - 8.8.8.8
+  # 主 DNS 服务器
+  nameserver:
+    - https://dns.alidns.com/dns-query    # 阿里 DoH
+    - https://doh.pub/dns-query           # 腾讯 DoH
+    - 223.5.5.5                          # 阿里 DNS
+    - 119.29.29.29                       # 腾讯 DNS
+  # 备用 DNS 服务器
+  fallback:
+    - https://cloudflare-dns.com/dns-query
+    - https://dns.google/dns-query
+    - 8.8.8.8
+    - 1.1.1.1
+
+# 代理节点配置
+proxies:
+  # Shadowsocks 示例
+  - name: "ss-example"
+    type: ss
+    server: example.com
+    port: 443
+    cipher: aes-256-gcm
+    password: "your-password"
+    # udp: true                          # 启用 UDP 转发（可选）
+
+  # VMess 示例
+  - name: "vmess-example"
+    type: vmess
+    server: example.org
+    port: 443
+    uuid: 12345678-1234-1234-1234-123456789abc
+    alterId: 0
+    cipher: auto
+    tls: true
+    # skip-cert-verify: false           # 跳过证书验证（不推荐）
+    # servername: example.org           # TLS SNI
+    # network: ws                       # 传输协议：tcp/ws/h2/grpc
+    # ws-opts:                          # WebSocket 选项
+    #   path: /path
+    #   headers:
+    #     Host: example.org
+
+  # Trojan 示例
+  - name: "trojan-example"
+    type: trojan
+    server: example.net
+    port: 443
+    password: "your-password"
+    # sni: example.net                  # TLS SNI
+    # skip-cert-verify: false          # 跳过证书验证（不推荐）
+
+# 代理组配置
+proxy-groups:
+  # 手动选择组
+  - name: "PROXY"
+    type: select
+    proxies:
+      - ss-example
+      - vmess-example
+      - trojan-example
+      - DIRECT
+
+  # 自动选择组（延迟测试）
+  - name: "AUTO"
+    type: url-test
+    proxies:
+      - ss-example
+      - vmess-example
+      - trojan-example
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+
+  # 负载均衡组
+  - name: "LOAD-BALANCE"
+    type: load-balance
+    proxies:
+      - ss-example
+      - vmess-example
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+
+  # 故障转移组
+  - name: "FALLBACK"
+    type: fallback
+    proxies:
+      - ss-example
+      - vmess-example
+      - trojan-example
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+
+# 规则配置
+rules:
+  # 本地网络直连
+  - DOMAIN-SUFFIX,local,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT
+  - IP-CIDR,172.16.0.0/12,DIRECT
+  - IP-CIDR,192.168.0.0/16,DIRECT
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - IP-CIDR,17.0.0.0/8,DIRECT
+  - IP-CIDR,100.64.0.0/10,DIRECT
+
+  # 常用网站代理
+  - DOMAIN-SUFFIX,google.com,PROXY
+  - DOMAIN-SUFFIX,googleapis.com,PROXY
+  - DOMAIN-SUFFIX,youtube.com,PROXY
+  - DOMAIN-SUFFIX,facebook.com,PROXY
+  - DOMAIN-SUFFIX,twitter.com,PROXY
+  - DOMAIN-SUFFIX,instagram.com,PROXY
+  - DOMAIN-SUFFIX,github.com,PROXY
+  - DOMAIN-SUFFIX,stackoverflow.com,PROXY
+
+  # 国内网站直连
+  - DOMAIN-SUFFIX,baidu.com,DIRECT
+  - DOMAIN-SUFFIX,qq.com,DIRECT
+  - DOMAIN-SUFFIX,taobao.com,DIRECT
+  - DOMAIN-SUFFIX,tmall.com,DIRECT
+  - DOMAIN-SUFFIX,jd.com,DIRECT
+  - DOMAIN-SUFFIX,weibo.com,DIRECT
+  - DOMAIN-SUFFIX,zhihu.com,DIRECT
+  - DOMAIN-SUFFIX,bilibili.com,DIRECT
+
+  # 使用 GeoIP 规则
+  - GEOIP,CN,DIRECT
+
+  # 默认规则
+  - MATCH,PROXY

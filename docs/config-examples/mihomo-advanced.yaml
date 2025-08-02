@@ -1,0 +1,263 @@
+# Mihomo 高级配置示例
+# 包含 TUN 模式、规则集、代理提供者等高级功能
+
+# 基础配置
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+external-controller: 127.0.0.1:9090
+secret: ""                    # API 密钥（可选）
+
+# 全局配置
+global-client-fingerprint: chrome
+
+# TUN 模式配置
+tun:
+  enable: true
+  stack: system               # system/gvisor/lwip
+  dns-hijack:
+    - any:53
+  auto-route: true
+  auto-detect-interface: true
+
+# 高级 DNS 配置
+dns:
+  enable: true
+  listen: 0.0.0.0:53
+  ipv6: false
+  use-hosts: true
+  enhanced-mode: fake-ip      # redir-host/fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - '*.lan'
+    - localhost.ptlogin2.qq.com
+    - '+.srv.nintendo.net'
+    - '+.stun.playstation.net'
+    - xbox.*.microsoft.com
+    - '*.battlenet.com.cn'
+    - '*.wotgame.cn'
+    - '*.wggames.cn'
+    - '*.wowsgame.cn'
+    - '*.wargaming.net'
+  default-nameserver:
+    - 223.5.5.5
+    - 8.8.8.8
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  fallback:
+    - https://cloudflare-dns.com/dns-query
+    - https://dns.google/dns-query
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+    ipcidr:
+      - 240.0.0.0/4
+
+# 代理提供者（从外部 URL 获取节点）
+proxy-providers:
+  provider1:
+    type: http
+    url: "https://example.com/clash/config"
+    interval: 3600
+    path: ./providers/provider1.yaml
+    health-check:
+      enable: true
+      interval: 600
+      url: http://www.gstatic.com/generate_204
+
+# 规则提供者（从外部 URL 获取规则）
+rule-providers:
+  reject:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/reject.txt"
+    path: ./ruleset/reject.yaml
+    interval: 86400
+
+  icloud:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/icloud.txt"
+    path: ./ruleset/icloud.yaml
+    interval: 86400
+
+  apple:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/apple.txt"
+    path: ./ruleset/apple.yaml
+    interval: 86400
+
+  google:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/google.txt"
+    path: ./ruleset/google.yaml
+    interval: 86400
+
+  proxy:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/proxy.txt"
+    path: ./ruleset/proxy.yaml
+    interval: 86400
+
+  direct:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/direct.txt"
+    path: ./ruleset/direct.yaml
+    interval: 86400
+
+  private:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/private.txt"
+    path: ./ruleset/private.yaml
+    interval: 86400
+
+  gfw:
+    type: http
+    behavior: domain
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/gfw.txt"
+    path: ./ruleset/gfw.yaml
+    interval: 86400
+
+  telegramcidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/telegramcidr.txt"
+    path: ./ruleset/telegramcidr.yaml
+    interval: 86400
+
+  cncidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/cncidr.txt"
+    path: ./ruleset/cncidr.yaml
+    interval: 86400
+
+  lancidr:
+    type: http
+    behavior: ipcidr
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/lancidr.txt"
+    path: ./ruleset/lancidr.yaml
+    interval: 86400
+
+# 代理节点（示例）
+proxies:
+  - name: "ss-01"
+    type: ss
+    server: server1.example.com
+    port: 443
+    cipher: aes-256-gcm
+    password: "password1"
+
+  - name: "vmess-01"
+    type: vmess
+    server: server2.example.com
+    port: 443
+    uuid: 12345678-1234-1234-1234-123456789abc
+    alterId: 0
+    cipher: auto
+    tls: true
+
+# 代理组配置
+proxy-groups:
+  - name: "🚀 节点选择"
+    type: select
+    proxies:
+      - ♻️ 自动选择
+      - 🎯 全球直连
+      - 🛑 全球拦截
+      - 🇭🇰 香港节点
+      - 🇺🇸 美国节点
+      - 🇸🇬 新加坡节点
+      - 🇯🇵 日本节点
+
+  - name: "♻️ 自动选择"
+    type: url-test
+    use:
+      - provider1
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+
+  - name: "🇭🇰 香港节点"
+    type: url-test
+    filter: "(?i)港|hk|hongkong|hong kong"
+    use:
+      - provider1
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+
+  - name: "🇺🇸 美国节点"
+    type: url-test
+    filter: "(?i)美|us|unitedstates|united states"
+    use:
+      - provider1
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+
+  - name: "🇸🇬 新加坡节点"
+    type: url-test
+    filter: "(?i)新加坡|坡|sg|singapore"
+    use:
+      - provider1
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+
+  - name: "🇯🇵 日本节点"
+    type: url-test
+    filter: "(?i)日本|jp|japan"
+    use:
+      - provider1
+    url: 'http://www.gstatic.com/generate_204'
+    interval: 300
+    tolerance: 50
+
+  - name: "📺 哔哩哔哩"
+    type: select
+    proxies:
+      - 🎯 全球直连
+      - 🇭🇰 香港节点
+      - 🇸🇬 新加坡节点
+
+  - name: "🎮 游戏平台"
+    type: select
+    proxies:
+      - 🎯 全球直连
+      - 🚀 节点选择
+      - 🇺🇸 美国节点
+      - 🇭🇰 香港节点
+
+  - name: "🎯 全球直连"
+    type: select
+    proxies:
+      - DIRECT
+
+  - name: "🛑 全球拦截"
+    type: select
+    proxies:
+      - REJECT
+
+# 规则配置
+rules:
+  - RULE-SET,private,🎯 全球直连
+  - RULE-SET,reject,🛑 全球拦截
+  - RULE-SET,icloud,🎯 全球直连
+  - RULE-SET,apple,🎯 全球直连
+  - RULE-SET,google,🚀 节点选择
+  - RULE-SET,proxy,🚀 节点选择
+  - RULE-SET,direct,🎯 全球直连
+  - RULE-SET,lancidr,🎯 全球直连
+  - RULE-SET,cncidr,🎯 全球直连
+  - RULE-SET,telegramcidr,🚀 节点选择
+  - GEOIP,LAN,🎯 全球直连
+  - GEOIP,CN,🎯 全球直连
+  - MATCH,🚀 节点选择

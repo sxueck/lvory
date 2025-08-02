@@ -14,6 +14,29 @@ const NETWORK_CONSTANTS = {
 };
 
 const CONFIG_PATHS = {
+  // sing-box 配置路径
+  SINGBOX: {
+    MIXED_INBOUND_LISTEN: "inbounds.[type=mixed].listen",
+    MIXED_INBOUND_PORT: "inbounds.[type=mixed].listen_port",
+    API_CONTROLLER: "experimental.clash_api.external_controller",
+    LOG_CONFIG: "log",
+    TUN_INBOUND: "inbounds.[type=tun]",
+    OUTBOUNDS_BY_TAG: "outbounds.[tag={nodes[*].name}]"
+  },
+
+  // mihomo 配置路径
+  MIHOMO: {
+    MIXED_INBOUND_LISTEN: "allow-lan",
+    MIXED_INBOUND_PORT: "mixed-port",
+    API_CONTROLLER: "external-controller",
+    LOG_CONFIG: "log-level",
+    TUN_INBOUND: "tun",
+    PROXIES: "proxies",
+    PROXY_GROUPS: "proxy-groups",
+    RULES: "rules"
+  },
+
+  // 向后兼容的旧路径
   MIXED_INBOUND_LISTEN: "inbounds.[type=mixed].listen",
   MIXED_INBOUND_PORT: "inbounds.[type=mixed].listen_port",
   API_CONTROLLER: "experimental.clash_api.external_controller",

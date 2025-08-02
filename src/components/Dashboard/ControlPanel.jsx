@@ -29,6 +29,7 @@ const ControlPanel = ({
   downloadProgress,
   downloadMessage,
   onSwitchToActivity, // 添加切换到Activity的回调
+  onSwitchToSettings, // 添加切换到Settings的回调
   privacySettings,
   onPrivacySettingsChange
 }) => {
@@ -41,6 +42,48 @@ const ControlPanel = ({
     curl: false,
     docker: false
   });
+
+  // 处理运行/停止/安装按钮点击
+  const handleRunStopInstallClick = () => {
+    if (!coreExists) {
+      // 如果内核不存在，跳转到设置页面的内核管理部分
+      if (onSwitchToSettings) {
+        onSwitchToSettings('core');
+      }
+    } else {
+      // 如果内核存在，执行正常的启动/停止逻辑
+      onToggleSingBox();
+    }
+  };
+
+  // 检查内核安装状态的详细信息
+  const [coreInstallStatus, setCoreInstallStatus] = useState(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const checkCoreInstallStatus = async () => {
+    if (isCheckingStatus) return;
+
+    setIsCheckingStatus(true);
+    try {
+      if (window.electron && window.electron.core && window.electron.core.checkInstalled) {
+        const result = await window.electron.core.checkInstalled();
+        setCoreInstallStatus(result);
+        return result;
+      }
+    } catch (error) {
+      console.error('检查内核安装状态失败:', error);
+      setCoreInstallStatus({ success: false, error: error.message });
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
+  // 在组件挂载时检查内核状态
+  useEffect(() => {
+    if (!coreExists) {
+      checkCoreInstallStatus();
+    }
+  }, [coreExists]);
   const [copiedState, setCopiedState] = useState({});
   const [proxyPort, setProxyPort] = useState('7890');
   const [proxyAddress, setProxyAddress] = useState('127.0.0.1:7890');
@@ -1004,7 +1047,7 @@ go env -w GOSUMDB=off`
         position: 'relative'
       }}>
         <button
-          onClick={onToggleSingBox}
+          onClick={handleRunStopInstallClick}
           disabled={isStarting || isStopping}
           onMouseEnter={(e) => {
             if (!isStarting && !isStopping && !isDownloadingCore) {
@@ -1040,9 +1083,10 @@ go env -w GOSUMDB=off`
           }}
         >
           {isDownloadingCore ? '下载中...' :
-           isStarting ? '启动中...' : 
-           isStopping ? '停止中...' : 
-           !coreExists ? '安装内核' :
+           isStarting ? '启动中...' :
+           isStopping ? '停止中...' :
+           isCheckingStatus ? '检查中...' :
+           !coreExists ? (coreInstallStatus?.success === false ? '内核缺失' : '安装内核') :
            isRunning ? 'STOP' : 'RUN'}
           
           {(isStarting || isStopping) && (

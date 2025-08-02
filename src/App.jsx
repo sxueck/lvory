@@ -142,6 +142,18 @@ const App = () => {
     setActiveItem('activity');
   };
 
+  // 处理切换到Settings视图
+  const handleSwitchToSettings = (section = 'basic') => {
+    setActiveItem('settings');
+    if (section === 'core') {
+      // 可以通过事件或状态管理来通知Settings组件跳转到core部分
+      setTimeout(() => {
+        // 发送自定义事件来通知Settings组件切换到core部分
+        window.dispatchEvent(new CustomEvent('switchToSettingsSection', { detail: { section } }));
+      }, 100);
+    }
+  };
+
   // 窗口控制工具函数
   const handleWindowAction = (action) => {
     if (window.electron) {
@@ -230,7 +242,7 @@ const App = () => {
                 />
                 <div className="main-content" style={{ position: 'relative' }}>
                   {activeItem === 'dashboard' && (
-                    <Dashboard activeView={activeItem} onSwitchToActivity={handleSwitchToActivity} />
+                    <Dashboard activeView={activeItem} onSwitchToActivity={handleSwitchToActivity} onSwitchToSettings={handleSwitchToSettings} />
                   )}
                   {activeItem === 'profiles' && (
                     <div className="view-container">

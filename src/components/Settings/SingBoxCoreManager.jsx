@@ -14,7 +14,7 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
   const [showWarning, setShowWarning] = useState(false);
   const [pendingSwitchVersion, setPendingSwitchVersion] = useState(null);
   const [aboutInfo, setAboutInfo] = useState({ CORE_VERSION: '-' });
-  const [versionFilter, setVersionFilter] = useState('all'); // all, stable, alpha
+
 
   useEffect(() => {
     if (isVisible) {
@@ -94,23 +94,19 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
     }
   };
 
-  const handleSwitchVersion = (version) => {
-    setPendingSwitchVersion(version);
-    setShowWarning(true);
-  };
+  const handleSwitchVersion = async (version) => {
+    setSwitchingVersion(version);
 
-  const confirmSwitchVersion = async () => {
-    if (!pendingSwitchVersion) return;
-    
-    setSwitchingVersion(pendingSwitchVersion);
-    setShowWarning(false);
-    
     try {
       if (window.electron && window.electron.coreManager && window.electron.coreManager.switchVersion) {
-        const result = await window.electron.coreManager.switchVersion(pendingSwitchVersion);
+        const result = await window.electron.coreManager.switchVersion(version);
         if (result.success) {
-          setCurrentVersion(pendingSwitchVersion);
+          setCurrentVersion(version);
           await loadAboutInfo();
+
+          // 切换成功后显示兼容性警告
+          setPendingSwitchVersion(version);
+          setShowWarning(true);
         } else {
           setError(`切换失败: ${result.error}`);
         }
@@ -120,8 +116,13 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
       setError(`切换失败: ${error.message}`);
     } finally {
       setSwitchingVersion(null);
-      setPendingSwitchVersion(null);
     }
+  };
+
+  const confirmSwitchVersion = async () => {
+    // 这个函数现在只是关闭警告对话框
+    setShowWarning(false);
+    setPendingSwitchVersion(null);
   };
 
   const handleDeleteVersion = async (version) => {
@@ -158,13 +159,8 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
     return downloadingVersions.has(version);
   };
 
-  // 过滤版本
-  const filteredReleases = releases.filter(release => {
-    if (versionFilter === 'all') return true;
-    if (versionFilter === 'stable') return release.version_type === 'stable';
-    if (versionFilter === 'alpha') return release.version_type === 'alpha';
-    return true;
-  });
+  // 只显示前10个版本，简化列表
+  const filteredReleases = releases.slice(0, 10);
 
   if (!isVisible) return null;
 
@@ -243,7 +239,7 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
 
         {/* Current Version Info */}
         <div style={{
-          padding: '16px 24px',
+          padding: '20px 24px',
           borderBottom: '1px solid #e2e8f0',
           backgroundColor: '#f8fafc'
         }}>
@@ -255,10 +251,10 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
               <span style={{
                 fontSize: '15px',
                 fontWeight: '600',
-                padding: '3px 10px',
+                padding: '4px 12px',
                 backgroundColor: '#10b981',
                 color: 'white',
-                borderRadius: '5px'
+                borderRadius: '6px'
               }}>
                 {currentVersion || t('settings.unknown')}
               </span>
@@ -267,16 +263,26 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
               onClick={loadReleases}
               disabled={loading}
               style={{
-                padding: '6px 12px',
+                padding: '8px 16px',
                 borderRadius: '6px',
-                border: '1px solid #e2e8f0',
-                backgroundColor: '#ffffff',
-                color: '#64748b',
-                fontSize: '12px',
+                border: 'none',
+                backgroundColor: '#64748b',
+                color: 'white',
+                fontSize: '13px',
                 fontWeight: '500',
                 cursor: loading ? 'not-allowed' : 'pointer',
                 opacity: loading ? 0.6 : 1,
                 transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.target.style.backgroundColor = '#475569';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading) {
+                  e.target.style.backgroundColor = '#64748b';
+                }
               }}
             >
               {loading ? t('settings.refreshing') : t('settings.refresh')}
@@ -284,57 +290,11 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
           </div>
         </div>
 
-        {/* Version Filter */}
-        <div style={{
-          padding: '12px 24px',
-          borderBottom: '1px solid #e2e8f0',
-          backgroundColor: '#ffffff'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>
-              版本类型:
-            </span>
-            {[
-              { key: 'all', label: '全部' },
-              { key: 'stable', label: '稳定版' },
-              { key: 'alpha', label: '测试版' }
-            ].map(item => (
-              <button
-                key={item.key}
-                onClick={() => setVersionFilter(item.key)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '5px',
-                  border: '1px solid #e2e8f0',
-                  backgroundColor: versionFilter === item.key ? '#64748b' : '#ffffff',
-                  color: versionFilter === item.key ? '#ffffff' : '#64748b',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  if (versionFilter !== item.key) {
-                    e.target.style.backgroundColor = '#f1f5f9';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (versionFilter !== item.key) {
-                    e.target.style.backgroundColor = '#ffffff';
-                  }
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Content */}
         <div style={{
           flex: 1,
           overflow: 'auto',
-          padding: '12px 24px',
+          padding: '16px 24px',
           backgroundColor: '#ffffff'
         }}>
           {/* Loading State */}
@@ -400,26 +360,12 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
             </div>
           )}
 
-          {/* Empty Filter Results */}
-          {!loading && !error && releases.length > 0 && filteredReleases.length === 0 && (
-            <div style={{
-              padding: '48px 24px',
-              textAlign: 'center',
-              color: '#64748b'
-            }}>
-              <p style={{ margin: 0, fontSize: '16px', fontWeight: '500' }}>
-                没有找到符合条件的版本
-              </p>
-              <p style={{ margin: '8px 0 0 0', fontSize: '14px' }}>
-                请尝试切换到其他版本类型
-              </p>
-            </div>
-          )}
+
 
           {/* Releases List */}
           {!loading && !error && filteredReleases.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {filteredReleases.slice(0, 15).map(release => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {filteredReleases.map(release => {
                 const version = release.tag_name.replace(/^v/, '');
                 const isInstalled = isVersionInstalled(version);
                 const isDownloading = isVersionDownloading(version);
@@ -430,11 +376,12 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
                   <div
                     key={release.id}
                     style={{
-                      border: isCurrent ? '1px solid #10b981' : '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      backgroundColor: isCurrent ? 'rgba(16, 185, 129, 0.03)' : '#ffffff',
-                      transition: 'all 0.2s ease'
+                      border: isCurrent ? '2px solid #10b981' : '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '16px',
+                      backgroundColor: isCurrent ? 'rgba(16, 185, 129, 0.05)' : '#ffffff',
+                      transition: 'all 0.2s ease',
+                      boxShadow: isCurrent ? '0 2px 8px rgba(16, 185, 129, 0.1)' : '0 1px 3px rgba(0, 0, 0, 0.05)'
                     }}
                   >
                     <div style={{
@@ -442,9 +389,9 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{
-                          fontSize: '14px',
+                          fontSize: '15px',
                           fontWeight: '600',
                           color: '#1e293b'
                         }}>
@@ -452,21 +399,21 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
                         </span>
                         {isCurrent && (
                           <span style={{
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: '500',
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            fontSize: '12px',
+                            fontWeight: '600',
                             backgroundColor: '#10b981',
                             color: 'white'
                           }}>
-                            当前
+                            当前版本
                           </span>
                         )}
                         {isInstalled && !isCurrent && (
                           <span style={{
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            fontSize: '12px',
                             fontWeight: '500',
                             backgroundColor: '#64748b',
                             color: 'white'
@@ -474,38 +421,36 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
                             已安装
                           </span>
                         )}
-                        {release.version_type === 'alpha' && (
-                          <span style={{
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: '500',
-                            backgroundColor: '#f59e0b',
-                            color: 'white'
-                          }}>
-                            Alpha
-                          </span>
-                        )}
                       </div>
 
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
                         {!isInstalled && (
                           <button
                             onClick={() => handleDownload(version)}
                             disabled={isDownloading}
                             style={{
-                              padding: '4px 10px',
+                              padding: '6px 14px',
                               backgroundColor: isDownloading ? '#9ca3af' : '#3b82f6',
                               color: 'white',
                               border: 'none',
-                              borderRadius: '5px',
-                              fontSize: '11px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
                               fontWeight: '500',
                               cursor: isDownloading ? 'not-allowed' : 'pointer',
                               transition: 'all 0.2s ease'
                             }}
+                            onMouseEnter={(e) => {
+                              if (!isDownloading) {
+                                e.target.style.backgroundColor = '#2563eb';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isDownloading) {
+                                e.target.style.backgroundColor = '#3b82f6';
+                              }
+                            }}
                           >
-                            {isDownloading ? '下载中' : '下载'}
+                            {isDownloading ? '下载中...' : '下载'}
                           </button>
                         )}
 
@@ -514,18 +459,28 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
                             onClick={() => handleSwitchVersion(version)}
                             disabled={isSwitching}
                             style={{
-                              padding: '4px 10px',
+                              padding: '6px 14px',
                               backgroundColor: isSwitching ? '#9ca3af' : '#10b981',
                               color: 'white',
                               border: 'none',
-                              borderRadius: '5px',
-                              fontSize: '11px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
                               fontWeight: '500',
                               cursor: isSwitching ? 'not-allowed' : 'pointer',
                               transition: 'all 0.2s ease'
                             }}
+                            onMouseEnter={(e) => {
+                              if (!isSwitching) {
+                                e.target.style.backgroundColor = '#059669';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSwitching) {
+                                e.target.style.backgroundColor = '#10b981';
+                              }
+                            }}
                           >
-                            {isSwitching ? '切换中' : '切换'}
+                            {isSwitching ? '切换中...' : '切换'}
                           </button>
                         )}
 
@@ -533,15 +488,21 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
                           <button
                             onClick={() => handleDeleteVersion(version)}
                             style={{
-                              padding: '4px 10px',
+                              padding: '6px 14px',
                               backgroundColor: '#dc2626',
                               color: 'white',
                               border: 'none',
-                              borderRadius: '5px',
-                              fontSize: '11px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
                               fontWeight: '500',
                               cursor: 'pointer',
                               transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.backgroundColor = '#b91c1c';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.backgroundColor = '#dc2626';
                             }}
                           >
                             删除
@@ -565,69 +526,61 @@ const SingBoxCoreManager = ({ isVisible, onClose }) => {
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          zIndex: 10001
+          zIndex: 10001,
+          backdropFilter: 'blur(4px)'
         }}>
           <div style={{
             backgroundColor: '#ffffff',
-            borderRadius: '10px',
-            padding: '20px',
-            maxWidth: '400px',
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '420px',
             width: '90%',
-            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)'
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+            border: '1px solid #e2e8f0'
           }}>
             <h3 style={{
-              margin: '0 0 12px 0',
-              fontSize: '16px',
+              margin: '0 0 16px 0',
+              fontSize: '18px',
               fontWeight: '600',
-              color: '#dc2626'
+              color: '#f59e0b',
+              fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
             }}>
-              切换版本警告
+              内核版本切换提醒
             </h3>
             <p style={{
-              margin: '0 0 20px 0',
-              fontSize: '13px',
+              margin: '0 0 24px 0',
+              fontSize: '14px',
               color: '#64748b',
-              lineHeight: '1.4'
+              lineHeight: '1.5'
             }}>
-              切换内核版本可能导致兼容性问题，确定要继续吗？
+              内核版本已成功切换！请注意，不同版本的内核可能存在兼容性差异，如遇到问题请及时切换回原版本。
             </p>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowWarning(false);
-                  setPendingSwitchVersion(null);
-                }}
-                style={{
-                  padding: '6px 14px',
-                  backgroundColor: '#f3f4f6',
-                  color: '#4b5563',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '5px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-              >
-                取消
-              </button>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={confirmSwitchVersion}
                 style={{
-                  padding: '6px 14px',
-                  backgroundColor: '#dc2626',
+                  padding: '8px 16px',
+                  backgroundColor: '#10b981',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '5px',
-                  fontSize: '13px',
+                  borderRadius: '6px',
+                  fontSize: '14px',
                   fontWeight: '500',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#059669';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#10b981';
                 }}
               >
-                确认切换
+                我知道了
               </button>
             </div>
           </div>

@@ -1,6 +1,7 @@
 const https = require('https');
 const http = require('http');
 const eventBus = require('./event-bus');
+const universalApiClient = require('./universal-api-client');
 
 class ConnectionLogger {
   constructor() {
@@ -121,16 +122,49 @@ class ConnectionLogger {
         const result = await window.electron.getCurrentConfig();
         if (result.success && result.config) {
           const config = result.config;
-          
-          // 从配置中获取API地址
-          if (config.experimental && config.experimental.clash_api && config.experimental.clash_api.external_controller) {
-            const apiAddress = config.experimental.clash_api.external_controller;
+
+          // 获取当前内核类型
+          let coreType = 'singbox'; // 默认值
+          if (window.electron.core && window.electron.core.getCurrentType) {
+            try {
+              const coreResult = await window.electron.core.getCurrentType();
+              if (coreResult.success) {
+                coreType = coreResult.coreType;
+              }
+            } catch (error) {
+              console.warn('ConnectionLogger: 获取内核类型失败，使用默认值');
+            }
+          }
+
+          // 更新通用 API 客户端的内核类型
+          universalApiClient.setCoreType(coreType);
+
+          // 根据内核类型获取API地址
+          let apiAddress = null;
+          if (coreType === 'mihomo') {
+            // mihomo 使用 external-controller
+            apiAddress = config['external-controller'];
+          } else {
+            // sing-box 使用 experimental.clash_api.external_controller
+            if (config.experimental && config.experimental.clash_api && config.experimental.clash_api.external_controller) {
+              apiAddress = config.experimental.clash_api.external_controller;
+            }
+          }
+
+          if (apiAddress) {
             const [host, port] = apiAddress.split(':');
             this.clashApi.host = host || '127.0.0.1';
             this.clashApi.port = parseInt(port) || 9090;
-            console.log(`ConnectionLogger: 更新API配置 ${this.clashApi.host}:${this.clashApi.port}`);
+
+            // 同时更新通用 API 客户端的配置
+            universalApiClient.setApiConfig({
+              host: this.clashApi.host,
+              port: this.clashApi.port
+            });
+
+            console.log(`ConnectionLogger: 更新API配置 (${coreType}) ${this.clashApi.host}:${this.clashApi.port}`);
           } else {
-            console.warn('ConnectionLogger: 配置中未找到clash_api.external_controller，使用默认配置');
+            console.warn(`ConnectionLogger: 配置中未找到 ${coreType} 的API地址，使用默认配置`);
           }
         }
       } else {

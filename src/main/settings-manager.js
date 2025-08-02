@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const { getAppDataDir, generateDefaultLogPath } = require('../utils/paths');
 const nodeHistoryManager = require('./data-managers/node-history-manager');
 const ConfigParser = require('../utils/sing-box/config-parser');
+const { CORE_TYPES } = require('../constants/core-types');
 
 class SettingsManager {
   constructor() {
@@ -16,18 +17,21 @@ class SettingsManager {
       autoStart: false,
       checkUpdateOnBoot: true,
       tunMode: false,
-      
+
+      // 内核设置
+      coreType: CORE_TYPES.SINGBOX,
+
       // 日志设置
       logLevel: 'info',
       logOutput: '',
       logDisabled: false,
-      
+
       // Nodes 相关设置
       nodeAdvancedMonitoring: false,
       nodeExitStatusMonitoring: false,
       nodeExitIPPurity: false,
       keepNodeTrafficHistory: false,
-      
+
       // 高级设置
       kernelWatchdog: true,
       language: 'zh_CN',
@@ -155,6 +159,34 @@ class SettingsManager {
   }
 
   /**
+   * 从配置文件获取 API 地址
+   * @param {String} configPath 配置文件路径
+   * @returns {String} API 地址
+   */
+  getApiAddressFromConfig(configPath) {
+    try {
+      if (!configPath || !fs.existsSync(configPath)) {
+        logger.warn(`配置文件不存在，使用默认API地址: ${this.settings.apiAddress}`);
+        return this.settings.apiAddress;
+      }
+
+      const adapter = this.getCurrentCoreAdapter();
+      const configInfo = adapter.parseConfigFile(configPath);
+
+      if (configInfo && configInfo.apiAddress) {
+        logger.info(`从配置文件获取API地址: ${configInfo.apiAddress}`);
+        return configInfo.apiAddress;
+      } else {
+        logger.warn(`无法从配置文件解析API地址，使用默认地址: ${this.settings.apiAddress}`);
+        return this.settings.apiAddress;
+      }
+    } catch (error) {
+      logger.error(`从配置文件读取API地址失败: ${error.message}`);
+      return this.settings.apiAddress;
+    }
+  }
+
+  /**
    * 获取启动内核所需的完整配置
    * @param {String} configPath 配置文件路径
    * @param {Object} overrides 覆盖配置（可选）
@@ -251,6 +283,66 @@ class SettingsManager {
       logger.info(`同步开机自启动状态: ${openAtLogin ? '已启用' : '未启用'}`);
     } catch (error) {
       logger.error('同步开机自启动状态失败:', error);
+    }
+  }
+
+  /**
+   * 获取当前内核类型
+   * @returns {string} 内核类型
+   */
+  getCoreType() {
+    return this.settings.coreType || CORE_TYPES.SINGBOX;
+  }
+
+  /**
+   * 设置内核类型
+   * @param {string} coreType 内核类型
+   * @returns {Promise<Object>} 设置结果
+   */
+  async setCoreType(coreType) {
+    try {
+      const { isSupportedCoreType } = require('../constants/core-types');
+
+      if (!isSupportedCoreType(coreType)) {
+        return { success: false, error: `不支持的内核类型: ${coreType}` };
+      }
+
+      const oldCoreType = this.settings.coreType;
+      this.settings.coreType = coreType;
+
+      // 保存设置
+      await this.saveSettings({ coreType });
+
+      logger.info(`内核类型已从 ${oldCoreType} 切换到 ${coreType}`);
+      return {
+        success: true,
+        previousCore: oldCoreType,
+        currentCore: coreType
+      };
+    } catch (error) {
+      logger.error('设置内核类型失败:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 获取当前内核的配置适配器
+   * @returns {Object} 配置适配器
+   */
+  getCurrentCoreAdapter() {
+    const coreType = this.getCoreType();
+
+    try {
+      if (coreType === CORE_TYPES.MIHOMO) {
+        const MihomoConfigParser = require('../utils/mihomo/config-parser');
+        return new MihomoConfigParser();
+      } else {
+        // 默认使用 sing-box 解析器
+        return this.configParser;
+      }
+    } catch (error) {
+      logger.warn(`无法加载 ${coreType} 配置适配器，使用默认解析器:`, error);
+      return this.configParser;
     }
   }
 }

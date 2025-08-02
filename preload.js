@@ -266,11 +266,46 @@ contextBridge.exposeInMainWorld('electron', {
 
   // 统一的内核管理接口
   coreManager: {
+    // 旧的 sing-box 专用接口（保持向后兼容）
     getSingBoxReleases: () => ipcRenderer.invoke('core-manager-get-singbox-releases'),
     getInstalledVersions: () => ipcRenderer.invoke('core-manager-get-installed-versions'),
     downloadVersion: (version) => ipcRenderer.invoke('core-manager-download-version', version),
     switchVersion: (version) => ipcRenderer.invoke('core-manager-switch-version', version),
-    deleteVersion: (version) => ipcRenderer.invoke('core-manager-delete-version', version)
+    deleteVersion: (version) => ipcRenderer.invoke('core-manager-delete-version', version),
+
+    // 新的通用接口
+    getReleases: (coreType) => ipcRenderer.invoke('core-manager-get-releases', coreType),
+    downloadCore: (coreType, version) => ipcRenderer.invoke('core-manager-download-core', coreType, version),
+    getLatestVersion: (coreType) => ipcRenderer.invoke('core-manager-get-latest-version', coreType),
+    checkCoreInstalled: (coreType) => ipcRenderer.invoke('core-manager-check-core-installed', coreType)
+  },
+
+  // 统一的内核接口（新）
+  core: {
+    // 内核类型管理
+    getSupportedTypes: () => ipcRenderer.invoke('core-get-supported-types'),
+    getCurrentType: () => ipcRenderer.invoke('core-get-current-type'),
+    switchType: (coreType) => ipcRenderer.invoke('core-switch-type', coreType),
+
+    // 内核控制
+    start: (options) => ipcRenderer.invoke('core-start', options),
+    stop: () => ipcRenderer.invoke('core-stop'),
+
+    // 状态查询
+    getStatus: () => ipcRenderer.invoke('core-get-status'),
+    getDetailedStatus: () => ipcRenderer.invoke('core-get-detailed-status'),
+    getVersion: () => ipcRenderer.invoke('core-get-version'),
+    checkInstalled: () => ipcRenderer.invoke('core-check-installed'),
+
+    // 配置管理
+    checkConfig: (configPath) => ipcRenderer.invoke('core-check-config', configPath),
+    formatConfig: (configPath) => ipcRenderer.invoke('core-format-config', configPath),
+
+    // 其他功能
+    download: () => ipcRenderer.invoke('core-download'),
+    getAllStatus: () => ipcRenderer.invoke('core-get-all-status'),
+    getConfigInfo: () => ipcRenderer.invoke('core-get-config-info'),
+    checkFeatureSupport: (feature) => ipcRenderer.invoke('core-check-feature-support', feature)
   },
 
   // 统一的网络工具接口
